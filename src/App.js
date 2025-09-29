@@ -9,7 +9,7 @@
   import AdminDashboard from "./users/Clinic Admin/AdminDashboard";
   import StaffRegister from "./pages/StaffRegister";
   import StaffDashboard from "./users/Staff/StaffDashboard";
-  import DoctorDashboard from "./users/Doctor/DoctorDashboard";
+  import DoctorDashboard from "./users/Doctor/DoctorHub";
 
   // Components
   import PrivateRoute from "./components/PrivateRoute";
@@ -55,7 +55,7 @@
 
           {/* Doctor dashboard (protected, optional role check if needed) */}
           <Route
-            path="/doctor-dashboard/*"
+            path="/doctor-hub/*"
             element={
               <PrivateRoute allowedRole="doctor">
                 <DoctorDashboard />

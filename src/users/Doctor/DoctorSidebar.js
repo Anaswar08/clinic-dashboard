@@ -22,28 +22,18 @@ const Sidebar = () => {
         <nav>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             <li style={{ marginBottom: '20px' }}>
-              <Link to="/doctor-dashboard" style={{ color: 'white', textDecoration: 'none' }}>
+              <Link to="/doctor-hub" style={{ color: 'white', textDecoration: 'none' }}>
                 Dashboard
               </Link>
             </li>
             <li style={{ marginBottom: '20px' }}>
-              <Link to="/doctor-dashboard/appointments" style={{ color: 'white', textDecoration: 'none' }}>
+              <Link to="/doctor-hub/appointments" style={{ color: 'white', textDecoration: 'none' }}>
                 Appointments
               </Link>
             </li>
             <li style={{ marginBottom: '20px' }}>
-              <Link to="/doctor-dashboard/patients" style={{ color: 'white', textDecoration: 'none' }}>
+              <Link to="/doctor-hub/patients" style={{ color: 'white', textDecoration: 'none' }}>
                 Patients
-              </Link>
-            </li>
-            <li style={{ marginBottom: '20px' }}>
-              <Link to="/doctor-dashboard/billing" style={{ color: 'white', textDecoration: 'none' }}>
-                Billing
-              </Link>
-            </li>
-            <li style={{ marginBottom: '20px' }}>
-              <Link to="/doctor-dashboard/followups" style={{ color: 'white', textDecoration: 'none' }}>
-                FollowUp
               </Link>
             </li>
           </ul>
@@ -51,7 +41,7 @@ const Sidebar = () => {
       </div>
 
       <div style={{ marginTop: 'auto' }}>
-        <Link to="/doctor-dashboard/settings" style={{ color: 'white', textDecoration: 'none' }}>
+        <Link to="/doctor-hub/settings" style={{ color: 'white', textDecoration: 'none' }}>
           Settings
         </Link>
       </div>
