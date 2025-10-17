@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { db } from "../../services/firebase";
+import { db, auth } from "../../services/firebase";
 import {
   collection,
   addDoc,
@@ -9,6 +9,8 @@ import {
   serverTimestamp,
   query,
   where,
+  updateDoc,
+  orderBy,
 } from "firebase/firestore";
 
 const StaffManager = () => {
@@ -18,8 +20,10 @@ const StaffManager = () => {
   const [inviteList, setInviteList] = useState([]);
   const [activeStaff, setActiveStaff] = useState([]);
   const [inviteLinks, setInviteLinks] = useState({});
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [staffMap, setStaffMap] = useState({}); // 🔹 For quick staff lookup
 
-  // Load pending staff invites
+  // --- Load pending staff invites ---
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "staffInvites"), (snapshot) => {
       const invites = snapshot.docs.map((doc) => ({
@@ -39,21 +43,45 @@ const StaffManager = () => {
     return () => unsub();
   }, []);
 
-  // Load active staff (registered in `users` collection)
+  // --- Load active staff (registered users) ---
   useEffect(() => {
-    const q = query(collection(db, "users"), where("role", "in", ["staff", "doctor"])); 
+    const q = query(
+      collection(db, "users"),
+      where("role", "in", ["staff", "doctor"])
+    );
     const unsub = onSnapshot(q, (snapshot) => {
       const staff = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
       setActiveStaff(staff);
+
+      // 🔹 Create a lookup map for staff info
+      const map = {};
+      staff.forEach((s) => {
+        map[s.id] = { name: s.name || "Unnamed", email: s.email || "" };
+      });
+      setStaffMap(map);
     });
 
     return () => unsub();
   }, []);
 
-  // Add new staff invite
+  // --- Load all leave requests ---
+  useEffect(() => {
+    const q = query(collection(db, "leaveRequests"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const requests = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setLeaveRequests(requests);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // --- Add new staff invite ---
   const handleAddStaff = async () => {
     if (!staffName || !staffEmail) {
       alert("Please fill in both name and email");
@@ -66,7 +94,7 @@ const StaffManager = () => {
         email: staffEmail,
         role: selectedRole,
         createdAt: serverTimestamp(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days expiry
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         status: "pending",
       });
 
@@ -79,7 +107,7 @@ const StaffManager = () => {
     }
   };
 
-  // Remove staff invite
+  // --- Remove staff invite ---
   const handleRemoveInvite = async (id) => {
     if (window.confirm("Are you sure you want to remove this staff invite?")) {
       try {
@@ -90,24 +118,49 @@ const StaffManager = () => {
     }
   };
 
-  // Remove active staff (delete from `users`)
+  // --- Remove active staff ---
   const handleRemoveActiveStaff = async (id) => {
     if (window.confirm("Are you sure you want to remove this staff member?")) {
       try {
-        // 1. Delete Firestore record
         await deleteDoc(doc(db, "users", id));
 
-        // 2. Optional: Force logout if current user is removed
         if (auth.currentUser && auth.currentUser.uid === id) {
-          await auth.signOut(); 
-          window.location.href = "/"; // redirect to login
+          await auth.signOut();
+          window.location.href = "/";
         }
-
-        // 3. NOTE: For full deletion from Firebase Auth, 
-        // this must be done with Firebase Admin SDK (backend/Cloud Function).
       } catch (error) {
         console.error("Error removing active staff:", error);
       }
+    }
+  };
+
+  // --- Approve leave request ---
+  const handleApproveLeave = async (id) => {
+    try {
+      await updateDoc(doc(db, "leaveRequests", id), { status: "approved" });
+    } catch (error) {
+      console.error("Error approving leave:", error);
+    }
+  };
+
+  // --- Reject leave request ---
+  const handleRejectLeave = async (id) => {
+    try {
+      await updateDoc(doc(db, "leaveRequests", id), { status: "rejected" });
+    } catch (error) {
+      console.error("Error rejecting leave:", error);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "approved":
+        return "#28a745";
+      case "rejected":
+        return "#dc3545";
+      case "pending":
+      default:
+        return "#ffc107";
     }
   };
 
@@ -186,7 +239,7 @@ const StaffManager = () => {
       <ul>
         {activeStaff.map((staff) => (
           <li key={staff.id} style={{ marginBottom: "10px" }}>
-            <strong>{staff.name}</strong> ({staff.email}),{staff.role}
+            <strong>{staff.name}</strong> ({staff.email}), {staff.role}
             <button
               onClick={() => handleRemoveActiveStaff(staff.id)}
               style={{
@@ -203,6 +256,87 @@ const StaffManager = () => {
           </li>
         ))}
       </ul>
+
+      {/* Leave Requests Management */}
+      <h3 style={{ marginTop: "30px" }}>Leave Requests</h3>
+      {leaveRequests.length === 0 ? (
+        <p>No leave requests found.</p>
+      ) : (
+        <ul style={{ listStyle: "none", paddingLeft: "0" }}>
+          {leaveRequests.map((req) => {
+            const staffInfo = staffMap[req.staffId] || {};
+            return (
+              <li
+                key={req.id}
+                style={{
+                  marginBottom: "12px",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  backgroundColor: "#fff",
+                }}
+              >
+                <strong>{req.type}</strong> request for{" "}
+                <span>{req.date || "N/A"}</span>
+                <p style={{ margin: "5px 0" }}>
+                  <em>{req.reason}</em>
+                </p>
+                <p style={{ margin: "5px 0", fontSize: "14px", color: "#555" }}>
+                  From:{" "}
+                  <strong>
+                    {staffInfo.name || "Unknown"} ({staffInfo.email || req.staffId})
+                  </strong>
+                </p>
+                <span
+                  style={{
+                    backgroundColor: getStatusColor(req.status),
+                    color: "white",
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    marginRight: "10px",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {req.status}
+                </span>
+
+                {req.status === "pending" && (
+                  <>
+                    <button
+                      onClick={() => handleApproveLeave(req.id)}
+                      style={{
+                        backgroundColor: "#28a745",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "5px 10px",
+                        marginRight: "8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleRejectLeave(req.id)}
+                      style={{
+                        backgroundColor: "#dc3545",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "5px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 };
