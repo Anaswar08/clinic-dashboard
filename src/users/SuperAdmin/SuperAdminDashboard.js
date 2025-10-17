@@ -6,6 +6,8 @@ import SuperAdminHome from "./SuperAdminHome";
 import Approval from "./Approval";
 import Clinics from "./Clinics";
 import Settings from '../../modules/Dashboard/Settings';
+import SendAnnouncement from "./SendAnnouncement";
+import SentAnnouncement from "./SentAnnouncement";
 
 function SuperAdminDashboard() {
   return (
@@ -22,6 +24,12 @@ function SuperAdminDashboard() {
 
           {/* Clinics management */}
           <Route path="clinics" element={<Clinics />} />
+
+          {/* Send Announcement*/}
+          <Route path="send-announcement" element={<SendAnnouncement/>}/>
+
+          {/* Sent Announcement*/}
+          <Route path="sent-announcement" element={<SentAnnouncement/>}/>
 
           {/* Redirect unknown paths back to dashboard */}
           <Route path="*" element={<Navigate to="/" />} />
