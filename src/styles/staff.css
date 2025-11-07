@@ -1,0 +1,116 @@
+/* src/styles/staff.css */
+
+/* === Base Layout (mobile-first) === */
+.staff-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Sidebar (hidden by default on mobile) */
+.staff-sidebar {
+  position: fixed;
+  top: 0;
+  left: -260px;
+  width: 240px;
+  height: 100%;
+  background-color: #1f43ac;
+  color: white;
+  transition: left 0.3s ease-in-out;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.staff-sidebar.open {
+  left: 0;
+}
+
+/* Close button (visible only on mobile) */
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  align-self: flex-end;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+/* Sidebar content */
+.staff-sidebar h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+}
+
+.staff-sidebar nav ul {
+  list-style: none;
+  padding: 0;
+}
+
+.staff-sidebar nav li {
+  margin-bottom: 1rem;
+}
+
+.staff-sidebar nav a {
+  color: white;
+  text-decoration: none;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+}
+
+.sidebar-footer a {
+  color: white;
+  text-decoration: none;
+}
+
+/* Header & Main */
+.staff-main {
+  flex: 1;
+  padding: 1rem;
+  margin-left: 0;
+  background-color: #f7f9fc;
+}
+
+.staff-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  background: white;
+  padding: 0.5rem 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Menu Button (for mobile) */
+.menu-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #1f43ac;
+  cursor: pointer;
+  margin-right: 1rem;
+}
+
+/* === Larger screens (Desktop layout) === */
+@media (min-width: 768px) {
+  .staff-dashboard {
+    flex-direction: row;
+  }
+
+  .staff-sidebar {
+    position: relative;
+    left: 0;
+    height: 100vh;
+  }
+
+  .close-btn, .menu-btn {
+    display: none;
+  }
+
+  .staff-main {
+    margin-left: 240px;
+  }
+}

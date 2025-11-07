@@ -5,7 +5,7 @@ const Sidebar = () => {
     <div
       style={{
         width: '250px',
-        height: '100vh',
+        height: '100%',
         background: '#1e40af',
         color: 'white',
         position: 'fixed',

@@ -7,6 +7,7 @@ import {
   onSnapshot,
   updateDoc,
   doc,
+  getDoc,
   orderBy,
   addDoc,
   serverTimestamp,
@@ -85,7 +86,7 @@ const Tasks = () => {
     }
   };
 
-  // --- Handle Leave Request Click ---
+  // --- Handle Full Day Request Click ---
   const handleLeaveRequestClick = () => {
     setShowLeaveInput(true);
     setShowHalfDayInput(false);
@@ -101,7 +102,7 @@ const Tasks = () => {
     setLeaveDate("");
   };
 
-  // --- Submit Leave / Half Day Request ---
+  // --- Submit Full Day / Half Day Request ---
   const handleSubmitRequest = async (type) => {
     if (!leaveDate) {
       alert("Please select a date.");
@@ -112,10 +113,23 @@ const Tasks = () => {
       return;
     }
 
+    const staffId = auth.currentUser.uid;
+
     try {
+      // ✅ Fetch staff's name from users collection
+      const userRef = doc(db, "users", staffId);
+      const userSnap = await getDoc(userRef);
+
+      let staffName = "Unknown staff";
+      if (userSnap.exists()) {
+        staffName = userSnap.data().name || "Unnamed Staff";
+      }
+
+      // ✅ Add staffName field to Firestore
       await addDoc(collection(db, "leaveRequests"), {
-        staffId: auth.currentUser.uid,
-        type, // 'Leave' or 'Half Day'
+        staffId,
+        staffName, // ✅ included here
+        leaveType: type, // ✅ rename to match admin-side field naming
         reason,
         date: leaveDate,
         createdAt: serverTimestamp(),
@@ -149,7 +163,7 @@ const Tasks = () => {
     <div style={{ padding: "20px" }}>
       <h2>My Tasks</h2>
 
-      {/* Leave and Half Day Buttons */}
+      {/* Full day and Half Day Buttons */}
       <div style={{ marginBottom: "20px" }}>
         <button
           onClick={handleLeaveRequestClick}
@@ -163,7 +177,7 @@ const Tasks = () => {
             cursor: "pointer",
           }}
         >
-          Leave
+          Full Day
         </button>
         <button
           onClick={handleHalfDayRequestClick}
@@ -233,7 +247,7 @@ const Tasks = () => {
           <div style={{ marginTop: "10px" }}>
             <button
               onClick={() =>
-                handleSubmitRequest(showLeaveInput ? "Leave" : "Half Day")
+                handleSubmitRequest(showLeaveInput ? "Full day" : "Half Day")
               }
               style={{
                 backgroundColor: "#007BFF",

@@ -1,5 +1,7 @@
+// src/pages/admin/StaffManager.js
+
 import React, { useState, useEffect } from "react";
-import { db, auth } from "../../services/firebase";
+import { db } from "../../services/firebase";
 import {
   collection,
   addDoc,
@@ -10,8 +12,8 @@ import {
   query,
   where,
   updateDoc,
-  orderBy,
 } from "firebase/firestore";
+import { redistributeTasks } from "../../utils/taskBalancer"; // ✅ import the algorithm
 
 const StaffManager = () => {
   const [staffName, setStaffName] = useState("");
@@ -20,10 +22,9 @@ const StaffManager = () => {
   const [inviteList, setInviteList] = useState([]);
   const [activeStaff, setActiveStaff] = useState([]);
   const [inviteLinks, setInviteLinks] = useState({});
-  const [leaveRequests, setLeaveRequests] = useState([]);
-  const [staffMap, setStaffMap] = useState({}); // 🔹 For quick staff lookup
+  const [leaveRequests, setLeaveRequests] = useState([]); // ✅ store leave requests
 
-  // --- Load pending staff invites ---
+  // Load pending invites
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "staffInvites"), (snapshot) => {
       const invites = snapshot.docs.map((doc) => ({
@@ -32,56 +33,41 @@ const StaffManager = () => {
       }));
       setInviteList(invites);
 
-      // Generate invite links
       const links = {};
       invites.forEach((staff) => {
         links[staff.id] = `${window.location.origin}/staff-register?inviteId=${staff.id}`;
       });
       setInviteLinks(links);
     });
-
     return () => unsub();
   }, []);
 
-  // --- Load active staff (registered users) ---
+  // Load active staff
   useEffect(() => {
-    const q = query(
-      collection(db, "users"),
-      where("role", "in", ["staff", "doctor"])
-    );
+    const q = query(collection(db, "users"), where("role", "in", ["staff", "doctor"]));
     const unsub = onSnapshot(q, (snapshot) => {
       const staff = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
       setActiveStaff(staff);
-
-      // 🔹 Create a lookup map for staff info
-      const map = {};
-      staff.forEach((s) => {
-        map[s.id] = { name: s.name || "Unnamed", email: s.email || "" };
-      });
-      setStaffMap(map);
     });
-
     return () => unsub();
   }, []);
 
-  // --- Load all leave requests ---
+  // ✅ Load all leave requests
   useEffect(() => {
-    const q = query(collection(db, "leaveRequests"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const requests = snapshot.docs.map((doc) => ({
+    const unsub = onSnapshot(collection(db, "leaveRequests"), (snapshot) => {
+      const leaves = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setLeaveRequests(requests);
+      setLeaveRequests(leaves);
     });
-
     return () => unsub();
   }, []);
 
-  // --- Add new staff invite ---
+  // --- Add new staff ---
   const handleAddStaff = async () => {
     if (!staffName || !staffEmail) {
       alert("Please fill in both name and email");
@@ -107,60 +93,52 @@ const StaffManager = () => {
     }
   };
 
-  // --- Remove staff invite ---
+  // --- Remove invite ---
   const handleRemoveInvite = async (id) => {
-    if (window.confirm("Are you sure you want to remove this staff invite?")) {
-      try {
-        await deleteDoc(doc(db, "staffInvites", id));
-      } catch (error) {
-        console.error("Error removing staff invite:", error);
-      }
+    if (window.confirm("Remove this staff invite?")) {
+      await deleteDoc(doc(db, "staffInvites", id));
     }
   };
 
   // --- Remove active staff ---
   const handleRemoveActiveStaff = async (id) => {
-    if (window.confirm("Are you sure you want to remove this staff member?")) {
-      try {
-        await deleteDoc(doc(db, "users", id));
-
-        if (auth.currentUser && auth.currentUser.uid === id) {
-          await auth.signOut();
-          window.location.href = "/";
-        }
-      } catch (error) {
-        console.error("Error removing active staff:", error);
-      }
+    if (window.confirm("Remove this staff member?")) {
+      await deleteDoc(doc(db, "users", id));
     }
   };
 
-  // --- Approve leave request ---
-  const handleApproveLeave = async (id) => {
+  // ✅ Approve leave + trigger task balancer
+  const handleApproveLeave = async (leave) => {
+    if (!window.confirm(`Approve ${leave.leaveType} leave for ${leave.staffName}?`)) return;
+
     try {
-      await updateDoc(doc(db, "leaveRequests", id), { status: "approved" });
+      const leaveRef = doc(db, "leaveRequests", leave.id);
+      await updateDoc(leaveRef, { status: "approved" });
+
+      // 🔄 Trigger task redistribution
+      await redistributeTasks(
+        leave.leaveType === "Full day" ? [leave.staffId] : [],
+        leave.leaveType === "Half day" ? [leave.staffId] : []
+      );
+
+      alert("Leave approved and tasks redistributed successfully ✅");
     } catch (error) {
       console.error("Error approving leave:", error);
+      alert("Failed to approve leave");
     }
   };
 
-  // --- Reject leave request ---
-  const handleRejectLeave = async (id) => {
+  // ❌ Reject leave
+  const handleRejectLeave = async (leave) => {
+    if (!window.confirm(`Reject leave for ${leave.staffName}?`)) return;
+
     try {
-      await updateDoc(doc(db, "leaveRequests", id), { status: "rejected" });
+      const leaveRef = doc(db, "leaveRequests", leave.id);
+      await updateDoc(leaveRef, { status: "rejected" });
+      alert("Leave rejected ❌");
     } catch (error) {
       console.error("Error rejecting leave:", error);
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "approved":
-        return "#28a745";
-      case "rejected":
-        return "#dc3545";
-      case "pending":
-      default:
-        return "#ffc107";
+      alert("Failed to reject leave");
     }
   };
 
@@ -168,7 +146,7 @@ const StaffManager = () => {
     <div style={{ padding: "20px" }}>
       <h2>Staff Manager</h2>
 
-      {/* Add Staff Form */}
+      {/* ➕ Add Staff */}
       <div style={{ marginBottom: "20px" }}>
         <input
           type="text"
@@ -195,11 +173,11 @@ const StaffManager = () => {
         <button onClick={handleAddStaff}>Add Staff</button>
       </div>
 
-      {/* Pending Invites */}
+      {/* 📨 Pending Invites */}
       <h3>Pending Invites</h3>
       <ul>
         {inviteList.map((staff) => (
-          <li key={staff.id} style={{ marginBottom: "10px" }}>
+          <li key={staff.id}>
             <strong>{staff.name}</strong> ({staff.email}) - {staff.role}
             <br />
             Invite Link:{" "}
@@ -207,7 +185,7 @@ const StaffManager = () => {
               type="text"
               readOnly
               value={inviteLinks[staff.id] || ""}
-              style={{ width: "300px", marginRight: "10px" }}
+              style={{ width: "300px" }}
             />
             <button
               onClick={() => {
@@ -225,7 +203,6 @@ const StaffManager = () => {
                 color: "white",
                 border: "none",
                 padding: "5px 10px",
-                cursor: "pointer",
               }}
             >
               Remove
@@ -234,12 +211,12 @@ const StaffManager = () => {
         ))}
       </ul>
 
-      {/* Active Staff */}
+      {/* 👩‍⚕️ Active Staff */}
       <h3>Active Staff</h3>
       <ul>
         {activeStaff.map((staff) => (
-          <li key={staff.id} style={{ marginBottom: "10px" }}>
-            <strong>{staff.name}</strong> ({staff.email}), {staff.role}
+          <li key={staff.id}>
+            <strong>{staff.name}</strong> ({staff.email}) - {staff.role}
             <button
               onClick={() => handleRemoveActiveStaff(staff.id)}
               style={{
@@ -248,7 +225,6 @@ const StaffManager = () => {
                 color: "white",
                 border: "none",
                 padding: "5px 10px",
-                cursor: "pointer",
               }}
             >
               Remove
@@ -257,84 +233,69 @@ const StaffManager = () => {
         ))}
       </ul>
 
-      {/* Leave Requests Management */}
-      <h3 style={{ marginTop: "30px" }}>Leave Requests</h3>
+      {/* 🗓 Leave Requests */}
+      <h3>Leave Requests</h3>
       {leaveRequests.length === 0 ? (
-        <p>No leave requests found.</p>
+        <p>No leave requests yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", paddingLeft: "0" }}>
-          {leaveRequests.map((req) => {
-            const staffInfo = staffMap[req.staffId] || {};
-            return (
-              <li
-                key={req.id}
+        <ul>
+          {leaveRequests.map((leave) => (
+            <li
+              key={leave.id}
+              style={{
+                borderBottom: "1px solid #ddd",
+                marginBottom: "10px",
+                paddingBottom: "5px",
+              }}
+            >
+              <strong>{leave.staffName}</strong> — {leave.leaveType} leave <br />
+              Date: {leave.date} <br />
+              Reason: {leave.reason} <br />
+              Status:{" "}
+              <span
                 style={{
-                  marginBottom: "12px",
-                  padding: "10px",
-                  border: "1px solid #ddd",
-                  borderRadius: "6px",
-                  backgroundColor: "#fff",
+                  color:
+                    leave.status === "approved"
+                      ? "green"
+                      : leave.status === "rejected"
+                      ? "red"
+                      : "orange",
                 }}
               >
-                <strong>{req.type}</strong> request for{" "}
-                <span>{req.date || "N/A"}</span>
-                <p style={{ margin: "5px 0" }}>
-                  <em>{req.reason}</em>
-                </p>
-                <p style={{ margin: "5px 0", fontSize: "14px", color: "#555" }}>
-                  From:{" "}
-                  <strong>
-                    {staffInfo.name || "Unknown"} ({staffInfo.email || req.staffId})
-                  </strong>
-                </p>
-                <span
-                  style={{
-                    backgroundColor: getStatusColor(req.status),
-                    color: "white",
-                    padding: "3px 8px",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    marginRight: "10px",
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {req.status}
-                </span>
-
-                {req.status === "pending" && (
-                  <>
-                    <button
-                      onClick={() => handleApproveLeave(req.id)}
-                      style={{
-                        backgroundColor: "#28a745",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        padding: "5px 10px",
-                        marginRight: "8px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleRejectLeave(req.id)}
-                      style={{
-                        backgroundColor: "#dc3545",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        padding: "5px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Reject
-                    </button>
-                  </>
-                )}
-              </li>
-            );
-          })}
+                {leave.status}
+              </span>
+              {leave.status === "pending" && (
+                <>
+                  <br />
+                  <button
+                    onClick={() => handleApproveLeave(leave)}
+                    style={{
+                      marginTop: "5px",
+                      marginRight: "10px",
+                      background: "green",
+                      color: "white",
+                      border: "none",
+                      padding: "5px 10px",
+                    }}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleRejectLeave(leave)}
+                    style={{
+                      marginTop: "5px",
+                      background: "red",
+                      color: "white",
+                      border: "none",
+                      padding: "5px 10px",
+                    }}
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </div>
