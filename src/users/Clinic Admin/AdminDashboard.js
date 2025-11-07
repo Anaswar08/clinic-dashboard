@@ -13,6 +13,7 @@ import Treatments from '../../modules/Dashboard/Treatments';
 import Reports from '../../modules/Dashboard/Reports';
 import StaffManager from './StaffManager';
 import TaskManager from './TaskManager';
+import Notifications from './Notifications';
 
 function AdminDashboard() {
   return (
@@ -32,6 +33,7 @@ function AdminDashboard() {
           <Route path="reports" element={<Reports />} />
           <Route path="staff-manager" element={<StaffManager />} />
           <Route path="task-manager" element={<TaskManager />} />
+          <Route path="notifications" element={<Notifications/>}/>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

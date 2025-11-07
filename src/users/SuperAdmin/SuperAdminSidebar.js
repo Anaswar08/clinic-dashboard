@@ -36,6 +36,16 @@ const SuperAdminSidebar = () => {
                 Current Clinics
               </Link>
             </li>
+            <li style={{ marginBottom: '20px' }}>
+              <Link to="/super-admin-dashboard/send-announcement" style={{ color: 'white', textDecoration: 'none' }}>
+                Send Announcement
+              </Link>
+            </li>
+            <li style={{ marginBottom: '20px' }}>
+              <Link to="/super-admin-dashboard/sent-announcement" style={{ color: 'white', textDecoration: 'none' }}>
+                Sent Announcement
+              </Link>
+            </li>
           </ul>
         </nav>
       </div>
