@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, setDoc, doc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
 import { useNavigate } from "react-router-dom";
 
@@ -44,21 +44,39 @@ const Register = () => {
             });
             console.log("Verification email sent to:", user.email);
 
-            // 3. Save to "pendingClinicRequests"
-            await addDoc(collection(db, "pendingClinicRequests"), {
-                uid: user.uid,
-                clinic: form.clinic,
-                name: form.name,
-                email: form.email,
-                password: form.password,
-                status: "pending",
+            // 3. Create clinic document with "pending" status
+            const clinicRef = await addDoc(collection(db, "clinics"), {
+                name: form.clinic,
+                adminId: user.uid,
+                status: "pending", // Super admin needs to approve
                 createdAt: new Date(),
             });
 
-            // 4. Show message to verify email
+            console.log("Clinic created with ID:", clinicRef.id);
+
+            // 4. Add minimal reference in clinic's users subcollection
+            await setDoc(doc(db, `clinics/${clinicRef.id}/users/${user.uid}`), {
+                role: "admin",
+                addedAt: new Date(),
+            });
+
+            // 5. Create top-level user document with full details
+            await setDoc(doc(db, `users/${user.uid}`), {
+                name: form.name,
+                email: form.email,
+                clinicId: clinicRef.id,
+                role: "admin",
+                status: "pending", // Super admin needs to approve
+                emailVerified: false,
+                createdAt: new Date(),
+            });
+
+            console.log("User document created for:", user.uid);
+
+            // 6. Show message to verify email and wait for approval
             setSubmitted(true);
         } catch (err) {
-            console.error(err);
+            console.error("Registration error:", err);
             setError("Failed to register: " + err.message);
         }
     };
@@ -68,10 +86,21 @@ const Register = () => {
             <div style={{ maxWidth: 400, margin: "auto", padding: 20 }}>
                 <h2>Registration Submitted</h2>
                 <p>
-                    A verification link has been sent to your email. <br />
-                    Please verify your email before logging in.
+                    Thank you for registering! Please complete these steps:
                 </p>
-                <button onClick={() => navigate("/")}>Back to Login</button>
+                <ol style={{ textAlign: "left" }}>
+                    <li>Check your email and verify your email address</li>
+                    <li>Wait for admin approval (you'll receive a confirmation email)</li>
+                </ol>
+                <p style={{ marginTop: 20, fontSize: 14, color: "#666" }}>
+                    You'll be able to log in once both steps are complete.
+                </p>
+                <button 
+                    onClick={() => navigate("/")}
+                    style={{ marginTop: 20, padding: "10px 20px" }}
+                >
+                    Back to Login
+                </button>
             </div>
         );
     }
@@ -87,7 +116,7 @@ const Register = () => {
                     value={form.clinic}
                     onChange={handleChange}
                     required
-                    style={{ width: "100%", marginBottom: 10 }}
+                    style={{ width: "100%", marginBottom: 10, padding: 8 }}
                 />
                 <input
                     name="name"
@@ -95,7 +124,7 @@ const Register = () => {
                     value={form.name}
                     onChange={handleChange}
                     required
-                    style={{ width: "100%", marginBottom: 10 }}
+                    style={{ width: "100%", marginBottom: 10, padding: 8 }}
                 />
                 <input
                     name="email"
@@ -104,16 +133,17 @@ const Register = () => {
                     value={form.email}
                     onChange={handleChange}
                     required
-                    style={{ width: "100%", marginBottom: 10 }}
+                    style={{ width: "100%", marginBottom: 10, padding: 8 }}
                 />
                 <input
                     name="password"
-                    placeholder="Password"
+                    placeholder="Password (min 6 characters)"
                     type="password"
                     value={form.password}
                     onChange={handleChange}
                     required
-                    style={{ width: "100%", marginBottom: 10 }}
+                    minLength={6}
+                    style={{ width: "100%", marginBottom: 10, padding: 8 }}
                 />
 
                 <button type="submit" style={{ width: "100%", padding: 10 }}>

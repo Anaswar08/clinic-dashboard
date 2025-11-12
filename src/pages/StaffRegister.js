@@ -1,35 +1,28 @@
+// src/pages/StaffRegister.js
+
 import React, { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
+import { doc, getDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../services/firebase";
-import {
-  doc,
-  getDoc,
-  deleteDoc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import {
-  createUserWithEmailAndPassword,
-  sendEmailVerification,
-} from "firebase/auth";
 
 const StaffRegister = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-
   const inviteId = searchParams.get("inviteId");
+  const navigate = useNavigate();
 
   const [inviteData, setInviteData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: "", password: "" });
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Fetch invite details
+  // ✅ Fetch and validate invite
   useEffect(() => {
     const fetchInvite = async () => {
       if (!inviteId) {
-        setError("Invalid invite link.");
+        setError("Invalid invite link. No invite ID provided.");
         setLoading(false);
         return;
       }
@@ -39,26 +32,33 @@ const StaffRegister = () => {
         const inviteSnap = await getDoc(inviteRef);
 
         if (!inviteSnap.exists()) {
-          setError("Invite not found or already used.");
+          setError("This invite link is invalid or has been removed.");
           setLoading(false);
           return;
         }
 
         const invite = inviteSnap.data();
 
-        // Check expiry
-        if (invite.expiresAt.toDate() < new Date()) {
-          setError("Invite link has expired.");
+        // Check if invite has expired
+        const expiresAt = invite.expiresAt?.toDate?.();
+        if (expiresAt && expiresAt < new Date()) {
+          setError("This invite link has expired. Please contact your admin for a new invite.");
+          setLoading(false);
+          return;
+        }
+
+        // Check if invite is still pending
+        if (invite.status !== "pending") {
+          setError("This invite has already been used or cancelled.");
           setLoading(false);
           return;
         }
 
         setInviteData(invite);
-        setForm((prev) => ({ ...prev, name: invite.name || "" }));
+        setLoading(false);
       } catch (err) {
-        console.error(err);
-        setError("Failed to fetch invite.");
-      } finally {
+        console.error("Error fetching invite:", err);
+        setError("Failed to load invite details.");
         setLoading(false);
       }
     };
@@ -66,120 +66,247 @@ const StaffRegister = () => {
     fetchInvite();
   }, [inviteId]);
 
-  // Handle form input
-  const handleChange = (e) => {
-    setForm((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
-
-  // Register staff
+  // ✅ Handle staff registration
   const handleRegister = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!form.name || !form.password) {
-      setError("Please fill in all fields.");
+    // Validation
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
       return;
     }
 
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
-      // 1. Create Firebase Auth account
+      // 1. Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         inviteData.email,
-        form.password
+        password
       );
-
       const user = userCredential.user;
 
-      // 2. Send verification email
-      await sendEmailVerification(user);
-
-      // 3. Save user in "users" collection
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        name: form.name,
-        email: inviteData.email,
-        role: inviteData.role || "staff",
-        createdAt: serverTimestamp(),
+      // 2. Send email verification
+      await sendEmailVerification(user, {
+        url: window.location.origin + "/",
+        handleCodeInApp: false,
       });
 
-      // 4. Delete invite to prevent reuse
+      // 3. Create user document in top-level users collection
+      await setDoc(doc(db, "users", user.uid), {
+        name: inviteData.name,
+        email: inviteData.email,
+        clinicId: inviteData.clinicId,        // ✅ Auto-linked to clinic
+        role: inviteData.role,
+        status: "active",                     // Immediately active
+        emailVerified: false,
+        invitedBy: inviteData.invitedBy,
+        createdAt: new Date(),
+      });
+
+      // 4. Add minimal reference to clinic's users subcollection
+      await setDoc(doc(db, `clinics/${inviteData.clinicId}/users/${user.uid}`), {
+        role: inviteData.role,
+        addedAt: new Date(),
+      });
+
+      // 5. Delete the invite (it's been used)
       await deleteDoc(doc(db, "staffInvites", inviteId));
 
-      setSubmitted(true);
+      alert(
+        `Registration successful! 🎉\n\n` +
+        `Welcome to ${inviteData.clinicName}!\n\n` +
+        `Please check your email (${inviteData.email}) and verify your account before logging in.`
+      );
+
+      // Redirect to login
+      navigate("/");
     } catch (err) {
-      console.error(err);
-      setError("Registration failed: " + err.message);
+      console.error("Registration error:", err);
+      
+      // Handle specific Firebase errors
+      if (err.code === "auth/email-already-in-use") {
+        setError("This email is already registered. Please login instead.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Invalid email address.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password is too weak. Please use a stronger password.");
+      } else {
+        setError("Registration failed: " + err.message);
+      }
+      
+      setSubmitting(false);
     }
   };
 
-  if (loading) return <p>Loading invite details...</p>;
-
-  if (submitted) {
+  if (loading) {
     return (
-      <div style={{ padding: "20px" }}>
-        <h2>Registration Successful!</h2>
-        <p>
-          We've sent you an email verification link.  
-          Please verify before logging in.
-        </p>
-        <button onClick={() => navigate("/")}>Go to Login</button>
+      <div style={{ maxWidth: 400, margin: "50px auto", padding: 20, textAlign: "center" }}>
+        <p>Loading invite details...</p>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !inviteData) {
     return (
-      <div style={{ padding: "20px", color: "red" }}>
-        <h3>{error}</h3>
+      <div style={{ maxWidth: 400, margin: "50px auto", padding: 20 }}>
+        <h2 style={{ color: "#f44336" }}>Invalid Invite</h2>
+        <p>{error}</p>
+        <button 
+          onClick={() => navigate("/")}
+          style={{ 
+            marginTop: 20, 
+            padding: "10px 20px",
+            background: "#2196F3",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer"
+          }}
+        >
+          Go to Login
+        </button>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: "400px", margin: "auto", padding: "20px" }}>
-      <h2>Staff Registration</h2>
-      <p>Registering for: <strong>{inviteData.email}</strong></p>
+    <div style={{ maxWidth: 400, margin: "50px auto", padding: 20 }}>
+      <h2>Complete Your Registration</h2>
+      
+      <div style={{ 
+        padding: "15px", 
+        marginBottom: "20px", 
+        background: "#E3F2FD", 
+        borderRadius: "5px",
+        border: "1px solid #2196F3"
+      }}>
+        <p style={{ margin: 0, fontSize: "14px" }}>
+          <strong>You've been invited to join:</strong><br />
+          <span style={{ fontSize: "18px", color: "#1976D2" }}>{inviteData.clinicName}</span>
+        </p>
+        <p style={{ margin: "10px 0 0 0", fontSize: "14px", color: "#666" }}>
+          Role: <strong>{inviteData.role}</strong><br />
+          Email: <strong>{inviteData.email}</strong>
+        </p>
+      </div>
 
       <form onSubmit={handleRegister}>
-        <input
-          type="text"
-          name="name"
-          placeholder="Full Name"
-          value={form.name}
-          onChange={handleChange}
-          style={{ width: "100%", marginBottom: "10px" }}
-          required
-        />
-        <input
-          type="password"
-          name="password"
-          placeholder="Password"
-          value={form.password}
-          onChange={handleChange}
-          style={{ width: "100%", marginBottom: "10px" }}
-          required
-        />
+        <div style={{ marginBottom: 15 }}>
+          <label style={{ display: "block", marginBottom: 5, fontWeight: "bold" }}>
+            Full Name
+          </label>
+          <input
+            type="text"
+            value={inviteData.name}
+            disabled
+            style={{ 
+              width: "100%", 
+              padding: 10, 
+              border: "1px solid #ddd",
+              borderRadius: "4px",
+              background: "#f5f5f5",
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 15 }}>
+          <label style={{ display: "block", marginBottom: 5, fontWeight: "bold" }}>
+            Email
+          </label>
+          <input
+            type="email"
+            value={inviteData.email}
+            disabled
+            style={{ 
+              width: "100%", 
+              padding: 10, 
+              border: "1px solid #ddd",
+              borderRadius: "4px",
+              background: "#f5f5f5",
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 15 }}>
+          <label style={{ display: "block", marginBottom: 5, fontWeight: "bold" }}>
+            Create Password *
+          </label>
+          <input
+            type="password"
+            placeholder="Minimum 6 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+            style={{ 
+              width: "100%", 
+              padding: 10, 
+              border: "1px solid #ddd",
+              borderRadius: "4px",
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", marginBottom: 5, fontWeight: "bold" }}>
+            Confirm Password *
+          </label>
+          <input
+            type="password"
+            placeholder="Re-enter your password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={6}
+            style={{ 
+              width: "100%", 
+              padding: 10, 
+              border: "1px solid #ddd",
+              borderRadius: "4px",
+              boxSizing: "border-box"
+            }}
+          />
+        </div>
+
+        {error && (
+          <p style={{ color: "#f44336", marginBottom: 15, fontSize: "14px" }}>
+            {error}
+          </p>
+        )}
+
         <button
           type="submit"
+          disabled={submitting}
           style={{
             width: "100%",
-            padding: "10px",
-            backgroundColor: "#1e40af",
+            padding: 12,
+            background: submitting ? "#ccc" : "#4CAF50",
             color: "white",
             border: "none",
-            borderRadius: "5px",
-            cursor: "pointer",
+            borderRadius: "4px",
+            fontSize: "16px",
+            fontWeight: "bold",
+            cursor: submitting ? "not-allowed" : "pointer"
           }}
         >
-          Complete Registration
+          {submitting ? "Creating Account..." : "Complete Registration"}
         </button>
       </form>
 
-      {error && <p style={{ color: "red", marginTop: "10px" }}>{error}</p>}
+      <p style={{ marginTop: 20, fontSize: "12px", color: "#666", textAlign: "center" }}>
+        By registering, you agree to join {inviteData.clinicName} as a {inviteData.role}.
+      </p>
     </div>
   );
 };

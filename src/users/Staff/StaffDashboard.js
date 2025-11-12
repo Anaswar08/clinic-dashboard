@@ -10,6 +10,7 @@ import Settings from '../../modules/Dashboard/Settings';
 import UserProfile from '../../modules/Dashboard/UserProfile';
 import FollowUp from '../../modules/Dashboard/FollowUps';
 import Tasks from './Tasks';
+import LeaveRequests from './LeaveRequests';
 
 function StaffDashboard() {
   return (
@@ -26,6 +27,7 @@ function StaffDashboard() {
           <Route path="profile" element={<UserProfile />} />
           <Route path="followups" element={<FollowUp />} />
           <Route path="tasks" element={<Tasks />} />
+          <Route path="leaverequests" element={<LeaveRequests />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

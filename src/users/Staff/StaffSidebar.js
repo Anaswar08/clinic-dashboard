@@ -51,6 +51,11 @@ const Sidebar = () => {
                 Tasks
               </Link>
             </li>
+            <li style={{ marginBottom: '20px' }}>
+              <Link to="/staff-dashboard/leaverequests" style={{ color: 'white', textDecoration: 'none' }}>
+                Leave Requests
+              </Link>
+            </li>
           </ul>
         </nav>
       </div>
